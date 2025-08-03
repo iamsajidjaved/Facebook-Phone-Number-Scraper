@@ -1,0 +1,254 @@
+/* Styles for Facebook Contact Extractor */
+
+#fb-contact-extractor-status {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 300px;
+  background: white;
+  border: 2px solid #1877f2;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+}
+
+.extractor-header {
+  background: #1877f2;
+  color: white;
+  padding: 10px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 6px 6px 0 0;
+}
+
+.extractor-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.extractor-header button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 5px;
+}
+
+.extractor-header button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+#extractor-close {
+  font-size: 18px !important;
+  font-weight: bold;
+  padding: 2px 8px !important;
+}
+
+.extractor-stats {
+  padding: 15px;
+  background: #f8f9fa;
+}
+
+.extractor-stats div {
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.extractor-stats div:last-child {
+  margin-bottom: 0;
+}
+
+.extractor-stats span {
+  font-weight: 600;
+}
+
+.extractor-controls {
+  padding: 10px 15px;
+  background: white;
+  border-top: 1px solid #e4e6ea;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.extractor-controls button {
+  flex: 1;
+  min-width: 70px;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  background: white;
+  color: #333;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.extractor-controls button:hover {
+  background: #f5f6f7;
+  border-color: #1877f2;
+}
+
+#extractor-export {
+  background: #42b883 !important;
+  color: white !important;
+  border-color: #42b883 !important;
+}
+
+#extractor-export:hover {
+  background: #369870 !important;
+}
+
+#extractor-clear {
+  background: #e74c3c !important;
+  color: white !important;
+  border-color: #e74c3c !important;
+}
+
+#extractor-clear:hover {
+  background: #c0392b !important;
+}
+
+/* Contacts Modal */
+#contacts-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80%;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  background: #1877f2;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.modal-body {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.contacts-list {
+  padding: 20px;
+}
+
+.contact-item {
+  border-bottom: 1px solid #e4e6ea;
+  padding: 12px 0;
+}
+
+.contact-item:last-child {
+  border-bottom: none;
+}
+
+.contact-number {
+  font-weight: 600;
+  color: #1877f2;
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.contact-context {
+  color: #65676b;
+  font-size: 14px;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.contact-meta {
+  color: #8a8d91;
+  font-size: 12px;
+}
+
+/* Animation for status updates */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.extractor-stats span[style*="color: green"] {
+  animation: pulse 2s infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #fb-contact-extractor-status {
+    width: 280px;
+    right: 10px;
+    top: 10px;
+  }
+  
+  .modal-content {
+    width: 95%;
+    margin: 20px;
+  }
+}
+
+/* Hide on small screens when needed */
+@media (max-width: 480px) {
+  #fb-contact-extractor-status {
+    width: 260px;
+    font-size: 12px;
+  }
+  
+  .extractor-header h3 {
+    font-size: 14px;
+  }
+  
+  .extractor-controls button {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+}
