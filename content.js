@@ -6,9 +6,15 @@ class FacebookContactExtractor {
     this.extractedNumbers = new Set();
     this.scrollInterval = null;
     this.extractInterval = null;
+    this.navigationInterval = null;
+    this.healthCheckInterval = null;
+    this.reconnectionInterval = null;
     this.statusElement = null;
     this.lastScrollPosition = 0;
     this.scrollTimeout = null;
+    this.originalUrl = '';
+    this.groupUrl = '';
+    this.fallbackMode = false;
     this.humanBehavior = {
       lastActivity: Date.now(),
       mouseMovements: 0,
@@ -17,42 +23,106 @@ class FacebookContactExtractor {
       sessionStartTime: Date.now()
     };
     
-    // Phone number patterns for different formats
+    // Comprehensive international phone number patterns
     this.phonePatterns = [
-      // Pakistani mobile numbers - exact formats from your samples
-      /\b0?3[0-9]{2}[-\s]?[0-9]{3}[-\s]?[0-9]{4}\b/g,      // 0302-8185226, 0315-5144747, 0311-9032215
-      /\b0?3[0-9]{9}\b/g,                                    // 03355858980 (no separators)
-      /\b\+923[0-9]{9}\b/g,                                  // +923379921437
-      /\b923[0-9]{9}\b/g,                                    // 923379921437 (without +)
+      // International format with country code
+      /\+[1-9]\d{0,3}[-.\s]?\(?[0-9]{1,4}\)?[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9}/g,
       
-      // Contact patterns with context (from your samples)
-      /(?:📞|contact|call|whatsapp|wa)[:\s]*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
-      /(?:📞|contact|call|whatsapp|wa)[:\s]*([0-9]{11})/gi,
-      /(?:📱|mobile|phone)[:\s]*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
+      // WhatsApp and messaging app formats
+      /(?:wa\.me\/|whatsapp\.com\/send\?phone=|telegram\.me\/)(\+?[0-9]{7,15})/gi,
+      /(?:viber|line|wechat)[:\s]*(\+?[0-9]{7,15})/gi,
       
-      // Multi-line contact detection (common in your samples)
-      /📞[^\n]*\n.*?([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
-      /contact[^:]*:[^\n]*\n.*?([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
+      // Contact patterns with context (multilingual)
+      /(?:📞|📱|☎️|contact|call|phone|mobile|whatsapp|wa|tel|telefon|telefono|téléphone|электронный|联系|連絡)[:\s]*(\+?[0-9]{7,15})/gi,
+      /(?:number|numero|nummer|numéro|номер|번호|号码)[:\s]*(\+?[0-9]{7,15})/gi,
       
-      // Specific patterns from your samples
-      /WhatsApp[^:]*:[^\n]*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
-      /Feel free to contact[^0-9]*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
-      /Contact us[^:]*:[^0-9]*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
+      // Country-specific patterns
       
-      // Multiple numbers in same post (like sample 4)
-      /([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})\s*\n\s*([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})/gi,
+      // Pakistan
+      /\b0?3[0-9]{2}[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,    // 0302-8185226, 03028185226
+      /\b\+?92[-.\s]?3[0-9]{2}[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // +92-302-818-5226
       
-      // General 11-digit Pakistani format
-      /\b0[3-9][0-9]{9}\b/g,                                 // Any Pakistani mobile starting with 0
+      // India
+      /\b\+?91[-.\s]?[6-9][0-9]{9}\b/g,                    // +91-9876543210
+      /\b[6-9][0-9]{9}\b/g,                                 // 9876543210
       
-      // WhatsApp format
-      /(?:wa\.me\/|whatsapp\.com\/send\?phone=)(\+?[0-9]{10,15})/g,
+      // USA/Canada
+      /\b\+?1[-.\s]?\(?[2-9][0-9]{2}\)?[-.\s]?[2-9][0-9]{2}[-.\s]?[0-9]{4}\b/g, // +1-555-123-4567
+      /\b\(?[2-9][0-9]{2}\)?[-.\s]?[2-9][0-9]{2}[-.\s]?[0-9]{4}\b/g, // (555) 123-4567
       
-      // Parentheses format
-      /\(([0-9]{4}[-\s]?[0-9]{3}[-\s]?[0-9]{4})\)/g,
+      // UK
+      /\b\+?44[-.\s]?[1-9][0-9]{8,9}\b/g,                  // +44-7700-900123
+      /\b0[1-9][0-9]{8,9}\b/g,                             // 07700-900123
       
-      // Fallback for any 10-11 digit number
-      /\b[0-9]{10,11}\b/g
+      // Germany
+      /\b\+?49[-.\s]?[1-9][0-9]{10,11}\b/g,                // +49-30-12345678
+      /\b0[1-9][0-9]{10,11}\b/g,                           // 030-12345678
+      
+      // France
+      /\b\+?33[-.\s]?[1-9][0-9]{8}\b/g,                    // +33-1-23-45-67-89
+      /\b0[1-9][-.\s]?[0-9]{2}[-.\s]?[0-9]{2}[-.\s]?[0-9]{2}[-.\s]?[0-9]{2}\b/g, // 01-23-45-67-89
+      
+      // Australia
+      /\b\+?61[-.\s]?[2-478][0-9]{8}\b/g,                  // +61-2-1234-5678
+      /\b0[2-478][0-9]{8}\b/g,                             // 02-1234-5678
+      
+      // Japan
+      /\b\+?81[-.\s]?[1-9][0-9]{8,9}\b/g,                  // +81-90-1234-5678
+      /\b0[1-9][0-9]{8,9}\b/g,                             // 090-1234-5678
+      
+      // China
+      /\b\+?86[-.\s]?1[3-9][0-9]{9}\b/g,                   // +86-138-0013-8000
+      /\b1[3-9][0-9]{9}\b/g,                               // 13800138000
+      
+      // South Korea
+      /\b\+?82[-.\s]?[1-9][0-9]{7,8}\b/g,                  // +82-10-1234-5678
+      /\b0[1-9][0-9]{7,8}\b/g,                             // 010-1234-5678
+      
+      // Brazil
+      /\b\+?55[-.\s]?[1-9][0-9]{10}\b/g,                   // +55-11-99999-9999
+      /\b\(?[1-9][0-9]\)?[-.\s]?9?[0-9]{4}[-.\s]?[0-9]{4}\b/g, // (11) 99999-9999
+      
+      // Mexico
+      /\b\+?52[-.\s]?[1-9][0-9]{9}\b/g,                    // +52-55-1234-5678
+      /\b[1-9][0-9]{9}\b/g,                                // 5512345678
+      
+      // Russia
+      /\b\+?7[-.\s]?[1-9][0-9]{9}\b/g,                     // +7-921-123-45-67
+      /\b8[-.\s]?[1-9][0-9]{9}\b/g,                        // 8-921-123-45-67
+      
+      // Turkey
+      /\b\+?90[-.\s]?[1-9][0-9]{9}\b/g,                    // +90-532-123-4567
+      /\b0[1-9][0-9]{9}\b/g,                               // 0532-123-4567
+      
+      // UAE
+      /\b\+?971[-.\s]?[1-9][0-9]{7,8}\b/g,                 // +971-50-123-4567
+      /\b0[1-9][0-9]{7,8}\b/g,                             // 050-123-4567
+      
+      // Saudi Arabia
+      /\b\+?966[-.\s]?[1-9][0-9]{8}\b/g,                   // +966-50-123-4567
+      /\b0[1-9][0-9]{8}\b/g,                               // 050-123-4567
+      
+      // Generic patterns for other countries
+      /\b\+[1-9]\d{6,14}\b/g,                              // Any international format +country-code
+      
+      // Common formats with separators
+      /\b[0-9]{3}[-.\s][0-9]{3}[-.\s][0-9]{4,6}\b/g,       // 123-456-7890
+      /\b[0-9]{4}[-.\s][0-9]{3}[-.\s][0-9]{3,4}\b/g,       // 1234-567-890
+      /\b\([0-9]{3}\)[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,   // (123) 456-7890
+      
+      // Parentheses formats
+      /\((\+?[0-9]{7,15})\)/g,                             // (+1234567890)
+      
+      // Multi-line contact detection
+      /(?:📞|contact|call)[^\n]*\n.*?(\+?[0-9]{7,15})/gi,
+      /(?:phone|mobile|whatsapp)[^:]*:[^\n]*(\+?[0-9]{7,15})/gi,
+      
+      // Email signatures and contact info
+      /(?:tel|phone|mobile|cell)[:\s]*(\+?[0-9]{7,15})/gi,
+      /(?:M|P|T)[:\s]*(\+?[0-9]{7,15})/gi,                 // M: mobile, P: phone, T: telephone
+      
+      // Fallback patterns for any reasonable phone number
+      /\b[0-9]{7,15}\b/g                                    // 7-15 digit numbers as last resort
     ];
     
     this.init();
@@ -63,7 +133,108 @@ class FacebookContactExtractor {
     this.setupKeyboardShortcuts();
     this.setupHumanBehaviorTracking();
     this.setupStealthMode();
-    console.log('Facebook Contact Extractor initialized with stealth mode');
+    this.setupExtensionHealthCheck();
+    this.setupGlobalErrorHandler();
+    this.restoreBackupContacts();
+    console.log('Facebook Contact Extractor initialized with stealth mode and enhanced error handling');
+  }
+
+  restoreBackupContacts() {
+    try {
+      const backupContacts = localStorage.getItem('fb-extractor-backup-contacts');
+      const backupTimestamp = localStorage.getItem('fb-extractor-backup-timestamp');
+      
+      if (backupContacts) {
+        const contacts = JSON.parse(backupContacts);
+        const timestamp = new Date(backupTimestamp);
+        const hoursSinceBackup = (Date.now() - timestamp.getTime()) / (1000 * 60 * 60);
+        
+        // Only restore if backup is less than 24 hours old
+        if (hoursSinceBackup < 24) {
+          console.log(`[FB Extractor] Found ${contacts.length} backup contacts from ${timestamp.toLocaleString()}`);
+          
+          // Add backup contacts to current session
+          contacts.forEach(contact => {
+            if (contact.number) {
+              this.extractedNumbers.add(contact.number);
+            }
+          });
+          
+          // Try to save to extension storage if context is available
+          if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+            this.safeSaveContacts(contacts);
+          }
+          
+          // Clear local storage backup after successful restore
+          localStorage.removeItem('fb-extractor-backup-contacts');
+          localStorage.removeItem('fb-extractor-backup-timestamp');
+          
+          console.log(`[FB Extractor] Restored ${contacts.length} contacts from backup`);
+        } else {
+          console.log(`[FB Extractor] Backup contacts are too old (${Math.round(hoursSinceBackup)} hours), skipping restore`);
+          // Clear old backup
+          localStorage.removeItem('fb-extractor-backup-contacts');
+          localStorage.removeItem('fb-extractor-backup-timestamp');
+        }
+      }
+    } catch (error) {
+      console.warn('[FB Extractor] Error restoring backup contacts:', error);
+    }
+  }
+
+  setupExtensionHealthCheck() {
+    // Periodic check to detect extension context invalidation
+    this.healthCheckInterval = setInterval(() => {
+      try {
+        // Test if extension context is still valid
+        if (!chrome || !chrome.runtime || !chrome.runtime.id) {
+          throw new Error('Extension context invalidated');
+        }
+        
+        // Additional test - try to access runtime API
+        const extensionId = chrome.runtime.id;
+        if (!extensionId) {
+          throw new Error('Extension ID not accessible');
+        }
+      } catch (error) {
+        console.warn('[FB Extractor] Extension health check failed:', error.message);
+        clearInterval(this.healthCheckInterval);
+        this.handleExtensionInvalidation();
+        this.showExtensionReloadNotification();
+      }
+    }, 10000); // Check every 10 seconds
+  }
+
+  // Global error handler for extension context issues
+  setupGlobalErrorHandler() {
+    // Catch any unhandled extension context errors
+    window.addEventListener('error', (event) => {
+      if (event.error && event.error.message && 
+          (event.error.message.includes('Extension context invalidated') ||
+           event.error.message.includes('message port closed') ||
+           event.error.message.includes('receiving end does not exist'))) {
+        
+        console.warn('[FB Extractor] Global error handler caught extension context invalidation');
+        event.preventDefault(); // Prevent error from propagating
+        this.handleExtensionInvalidation();
+        this.showExtensionReloadNotification();
+        return false;
+      }
+    });
+
+    // Also catch unhandled promise rejections related to extension context
+    window.addEventListener('unhandledrejection', (event) => {
+      if (event.reason && event.reason.message &&
+          (event.reason.message.includes('Extension context invalidated') ||
+           event.reason.message.includes('message port closed') ||
+           event.reason.message.includes('receiving end does not exist'))) {
+        
+        console.warn('[FB Extractor] Global promise rejection handler caught extension context invalidation');
+        event.preventDefault(); // Prevent unhandled rejection
+        this.handleExtensionInvalidation();
+        this.showExtensionReloadNotification();
+      }
+    });
   }
   
   setupHumanBehaviorTracking() {
@@ -99,38 +270,6 @@ class FacebookContactExtractor {
     };
   }
   
-  shouldPauseForSuspicion() {
-    const now = Date.now();
-    const sessionDuration = now - this.humanBehavior.sessionStartTime;
-    const timeSinceLastActivity = now - this.humanBehavior.lastActivity;
-    
-    // Pause if:
-    // 1. No real user activity for 5 minutes
-    // 2. Session running for more than 30 minutes without break
-    // 3. Very low interaction ratios
-    
-    if (timeSinceLastActivity > 300000) { // 5 minutes
-      console.log('[Stealth] Pausing - no user activity detected');
-      return true;
-    }
-    
-    if (sessionDuration > 1800000) { // 30 minutes
-      console.log('[Stealth] Pausing - long session, taking break');
-      return true;
-    }
-    
-    // Check interaction ratios (should have some real mouse/click activity)
-    const totalScrolls = this.humanBehavior.scrollEvents;
-    const realInteractions = this.humanBehavior.mouseMovements + this.humanBehavior.clickEvents;
-    
-    if (totalScrolls > 50 && realInteractions < 10) {
-      console.log('[Stealth] Pausing - suspicious interaction pattern');
-      return true;
-    }
-    
-    return false;
-  }
-  
   createStatusUI() {
     // Create floating status panel
     this.statusElement = document.createElement('div');
@@ -146,7 +285,7 @@ class FacebookContactExtractor {
         <div>Found: <span id="extractor-count">0</span> contacts</div>
         <div>Scrolling: <span id="extractor-scroll">No</span></div>
         <div>Expanding: <span id="extractor-expanding">No</span></div>
-        <div>Stealth: <span id="extractor-stealth">Active</span></div>
+        <div>Mode: <span id="extractor-mode">Continuous</span></div>
         <div>Interactions: <span id="extractor-interactions">0</span></div>
       </div>
       <div class="extractor-controls">
@@ -191,13 +330,6 @@ class FacebookContactExtractor {
   
   start() {
     if (this.isActive) return;
-    
-    // Check if we should start based on human behavior
-    if (this.shouldPauseForSuspicion()) {
-      this.updateStatus('Paused - Waiting for user activity', 'orange');
-      setTimeout(() => this.start(), 60000); // Retry in 1 minute
-      return;
-    }
     
     this.isActive = true;
     this.updateStatus('Active - Extracting', 'green');
@@ -342,7 +474,19 @@ class FacebookContactExtractor {
     if (this.navigationInterval) {
       clearInterval(this.navigationInterval);
       this.navigationInterval = null;
-    }    console.log('Contact extraction stopped');
+    }
+    
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+    
+    if (this.reconnectionInterval) {
+      clearInterval(this.reconnectionInterval);
+      this.reconnectionInterval = null;
+    }
+    
+    console.log('Contact extraction stopped');
   }
   
   startInfiniteScroll() {
@@ -359,12 +503,6 @@ class FacebookContactExtractor {
   }
   
   performHumanLikeScroll() {
-    // Check if we should pause for suspicious behavior
-    if (this.shouldPauseForSuspicion()) {
-      this.pauseExtraction();
-      return;
-    }
-    
     const currentPosition = window.pageYOffset;
     const documentHeight = document.documentElement.scrollHeight;
     const windowHeight = window.innerHeight;
@@ -423,20 +561,6 @@ class FacebookContactExtractor {
       }, this.getRandomScrollInterval());
       
     }, pauseTime);
-  }
-  
-  pauseExtraction() {
-    console.log('[Stealth] Pausing extraction to avoid detection');
-    this.updateStatus('Paused - Stealth mode', 'orange');
-    
-    const pauseDuration = Math.floor(Math.random() * 300000) + 120000; // 2-7 minutes
-    
-    setTimeout(() => {
-      if (this.isActive) {
-        console.log('[Stealth] Resuming extraction');
-        this.start();
-      }
-      }, pauseDuration);
   }
   
   startSubtleMouseMovements() {
@@ -620,7 +744,7 @@ class FacebookContactExtractor {
     });
     
     if (newContacts.length > 0) {
-      this.saveContacts(newContacts);
+      this.safeSaveContacts(newContacts);
       console.log(`[FB Extractor] Saved ${newContacts.length} contacts from expanded posts`);
     }
     
@@ -666,7 +790,7 @@ class FacebookContactExtractor {
       });
       
       if (newContacts.length > 0) {
-        this.saveContacts(newContacts);
+        this.safeSaveContacts(newContacts);
         console.log(`[FB Extractor] Saved ${newContacts.length} new contacts`);
       } else {
         console.log('[FB Extractor] No new contacts found in this extraction cycle');
@@ -692,12 +816,41 @@ class FacebookContactExtractor {
       
       unclickedButtons.forEach((button, btnIndex) => {
         console.log(`[FB Extractor] Found unclicked "See More" button ${btnIndex + 1} in post ${index + 1}:`, button.textContent.trim());
-        expandedCount++;
         
-        // Add human-like delay before clicking
-        setTimeout(() => {
-          this.humanLikeClick(button);
-        }, (expandedCount * 300) + Math.random() * 1000 + 200); // Stagger clicks
+        // FINAL SAFETY CHECK - Ensure we're not about to click anything that could navigate away
+        const isSafeToClick = (
+          button.tagName === 'DIV' &&                                    // Must be a div
+          /^(See more|مزید دیکھیں)$/i.test(button.textContent.trim()) &&  // Must be exact text
+          !button.closest('a') &&                                        // Not inside a link
+          !button.closest('[role="link"]') &&                           // Not inside link role
+          !button.closest('nav') &&                                     // Not inside navigation
+          !button.closest('header') &&                                  // Not inside header
+          !button.closest('[data-testid*="nav"]') &&                    // Not in nav element
+          !button.closest('[data-testid*="menu"]') &&                   // Not in menu
+          !button.getAttribute('onclick') &&                            // No onclick handler
+          !button.querySelector('a') &&                                 // Doesn't contain links
+          window.location.href.includes('facebook.com/groups')          // We're still in a group
+        );
+        
+        if (isSafeToClick) {
+          expandedCount++;
+          console.log(`[FB Extractor] ✅ SAFE TO CLICK: Approved "See More" div`);
+          
+          // Add human-like delay before clicking
+          setTimeout(() => {
+            this.humanLikeClick(button);
+          }, (expandedCount * 300) + Math.random() * 1000 + 200); // Stagger clicks
+        } else {
+          console.log(`[FB Extractor] ❌ UNSAFE TO CLICK: Rejecting button to prevent navigation`);
+          console.log(`[FB Extractor] ❌ Button details:`, {
+            tagName: button.tagName,
+            text: button.textContent.trim(),
+            hasOnclick: !!button.getAttribute('onclick'),
+            insideLink: !!button.closest('a'),
+            containsLink: !!button.querySelector('a'),
+            currentUrl: window.location.href
+          });
+        }
       });
     });
     
@@ -737,54 +890,95 @@ class FacebookContactExtractor {
       if (isExactSeeMore) {
         console.log('[FB Extractor] 🔍 Found EXACT "See more" div:', text);
         
-        // STRICT SAFETY CHECKS - Reject ANY potential navigation elements
+        // ULTRA STRICT SAFETY CHECKS - Reject ANY potential navigation elements
         const isNavigationElement = (
-          // Link elements
+          // Link elements - ABSOLUTE NO
           div.tagName === 'A' ||
           div.closest('a') ||
           div.href ||
           div.getAttribute('href') ||
           div.querySelector('a') ||
           
-          // URL indicators
+          // URL indicators - ABSOLUTE NO
           text.includes('http') ||
           text.includes('www.') ||
           text.includes('.com') ||
           text.includes('.org') ||
           text.includes('.net') ||
+          text.includes('://') ||
           
-          // Data attributes that might navigate
+          // Data attributes that might navigate - ABSOLUTE NO
           div.getAttribute('data-href') ||
           div.getAttribute('data-url') ||
           div.getAttribute('data-link') ||
+          div.getAttribute('data-navigate') ||
+          div.getAttribute('data-destination') ||
           
-          // Profile/page indicators
+          // Profile/page indicators - ABSOLUTE NO
           div.getAttribute('data-testid')?.includes('profile') ||
           div.getAttribute('data-testid')?.includes('page') ||
           div.getAttribute('data-testid')?.includes('user') ||
+          div.getAttribute('data-testid')?.includes('group') ||
+          div.getAttribute('data-testid')?.includes('marketplace') ||
           
-          // Video/media indicators  
+          // Video/media indicators - ABSOLUTE NO
           div.getAttribute('data-testid')?.includes('video') ||
           div.getAttribute('data-testid')?.includes('reel') ||
           div.getAttribute('data-testid')?.includes('media') ||
+          div.getAttribute('data-testid')?.includes('watch') ||
+          div.getAttribute('data-testid')?.includes('play') ||
           
-          // Navigation role indicators
+          // Navigation role indicators - ABSOLUTE NO
           div.getAttribute('role') === 'link' ||
           div.getAttribute('role') === 'navigation' ||
+          div.getAttribute('role') === 'menuitem' ||
+          div.getAttribute('role') === 'tab' ||
           
-          // Parent link check
+          // Parent element safety checks - ABSOLUTE NO
           div.closest('[role="link"]') ||
           div.closest('[href]') ||
+          div.closest('[data-testid*="nav"]') ||
+          div.closest('[data-testid*="menu"]') ||
+          div.closest('[data-testid*="header"]') ||
+          div.closest('nav') ||
+          div.closest('header') ||
           
-          // Child element check for navigation
+          // Child element check for navigation - ABSOLUTE NO
           div.querySelector('[role="link"]') ||
           div.querySelector('[href]') ||
           div.querySelector('a') ||
+          div.querySelector('button[data-testid*="nav"]') ||
           
-          // Additional safety - check for common navigation classes
+          // Button role that might navigate - ABSOLUTE NO 
+          (div.getAttribute('role') === 'button' && (
+            div.getAttribute('data-testid')?.includes('nav') ||
+            div.getAttribute('data-testid')?.includes('close') ||
+            div.getAttribute('data-testid')?.includes('back') ||
+            div.getAttribute('data-testid')?.includes('exit') ||
+            div.getAttribute('data-testid')?.includes('leave')
+          )) ||
+          
+          // Class names that indicate navigation - ABSOLUTE NO
           div.className.toLowerCase().includes('link') ||
           div.className.toLowerCase().includes('nav') ||
-          div.className.toLowerCase().includes('url')
+          div.className.toLowerCase().includes('url') ||
+          div.className.toLowerCase().includes('redirect') ||
+          div.className.toLowerCase().includes('external') ||
+          div.className.toLowerCase().includes('menu') ||
+          div.className.toLowerCase().includes('header') ||
+          
+          // Text content safety - ABSOLUTE NO if contains navigation words
+          (text.toLowerCase() !== 'see more' && 
+           text.toLowerCase() !== 'مزید دیکھیں' && (
+            text.toLowerCase().includes('leave') ||
+            text.toLowerCase().includes('exit') ||
+            text.toLowerCase().includes('close') ||
+            text.toLowerCase().includes('back') ||
+            text.toLowerCase().includes('home') ||
+            text.toLowerCase().includes('profile') ||
+            text.toLowerCase().includes('groups') ||
+            text.toLowerCase().includes('marketplace')
+          ))
         );
         
         if (!isNavigationElement && 
@@ -983,17 +1177,47 @@ class FacebookContactExtractor {
     
     const isExactSeeMore = exactSeeMorePatterns.some(pattern => pattern.test(text));
     
+    // ONLY allow if it's EXACTLY "See more" AND it's a DIV AND has no navigation indicators
     if (isExactSeeMore && element.tagName === 'DIV') {
-      console.log('[FB Extractor] ✅ APPROVED: Exact "See more" DIV element:', text);
-      return false; // Allow the click ONLY for exact "See more" divs
+      // Additional ultra-strict safety check even for "See more" divs
+      const hasNavigationIndicators = (
+        element.closest('a') ||                           // Inside a link
+        element.closest('[role="link"]') ||              // Inside link role
+        element.closest('nav') ||                        // Inside navigation
+        element.closest('header') ||                     // Inside header
+        element.closest('[data-testid*="nav"]') ||       // Inside nav element
+        element.closest('[data-testid*="menu"]') ||      // Inside menu
+        element.closest('[data-testid*="close"]') ||     // Inside close button
+        element.closest('[data-testid*="back"]') ||      // Inside back button
+        element.getAttribute('onclick') ||               // Has onclick handler
+        element.getAttribute('data-href') ||             // Has data-href
+        element.getAttribute('data-url') ||              // Has data-url
+        element.querySelector('a') ||                    // Contains link
+        element.querySelector('[role="link"]') ||        // Contains link role
+        // Check if parent has navigation text
+        (element.parentElement && (
+          element.parentElement.textContent.toLowerCase().includes('leave group') ||
+          element.parentElement.textContent.toLowerCase().includes('exit group') ||
+          element.parentElement.textContent.toLowerCase().includes('close') ||
+          element.parentElement.textContent.toLowerCase().includes('back to')
+        ))
+      );
+      
+      if (!hasNavigationIndicators) {
+        console.log('[FB Extractor] ✅ APPROVED: Safe "See more" div with no navigation indicators');
+        return false; // Allow the click ONLY for safe exact "See more" divs
+      } else {
+        console.log('[FB Extractor] ❌ REJECTED: "See more" div has navigation indicators - unsafe');
+        return true;
+      }
     }
     
-    // REJECT EVERYTHING ELSE - No exceptions
-    console.log('[FB Extractor] ❌ REJECTED: Not an exact "See more" div');
+    // REJECT EVERYTHING ELSE - Absolute no exceptions
+    console.log('[FB Extractor] ❌ REJECTED: Not a safe exact "See more" div');
     console.log('[FB Extractor] ❌ Element type:', element.tagName);
     console.log('[FB Extractor] ❌ Element text:', text.substring(0, 50));
     
-    return true; // Reject all other elements
+    return true; // Reject all other elements - MAXIMUM SAFETY
   }
   
   isVideoOrReel(element) {
@@ -1116,7 +1340,7 @@ class FacebookContactExtractor {
     });
     
     if (newContacts.length > 0) {
-      this.saveContacts(newContacts);
+      this.safeSaveContacts(newContacts);
       this.updateContactCount();
       console.log(`[FB Extractor] Saved ${newContacts.length} contacts from newly expanded post`);
     }
@@ -1266,76 +1490,475 @@ class FacebookContactExtractor {
   }
   
   cleanPhoneNumber(number) {
-    // Clean and standardize phone number
+    // Clean and standardize international phone number
     let cleaned = number.replace(/[^\d+]/g, '');
     
-    // Handle Pakistani mobile numbers
-    if (cleaned.match(/^03[0-9]{9}$/)) {
-      // 03171991804 -> +923171991804
-      cleaned = '+92' + cleaned.substring(1);
-    } else if (cleaned.match(/^3[0-9]{9}$/)) {
-      // 3171991804 -> +923171991804
-      cleaned = '+92' + cleaned;
-    } else if (cleaned.match(/^923[0-9]{9}$/)) {
-      // 923171991804 -> +923171991804
-      cleaned = '+' + cleaned;
-    } else if (cleaned.match(/^0[3-9][0-9]{9}$/)) {
-      // Any Pakistani mobile starting with 0 -> convert to +92
-      cleaned = '+92' + cleaned.substring(1);
+    // Remove any leading zeros or plus signs for processing
+    let workingNumber = cleaned.replace(/^[0+]+/, '');
+    
+    // Country code mapping and normalization
+    const countryRules = {
+      // Pakistan
+      '92': {
+        pattern: /^92[3-9][0-9]{8}$/,
+        localPattern: /^[3-9][0-9]{8}$/,
+        format: number => `+92${number.substring(number.length - 9)}`
+      },
+      
+      // India
+      '91': {
+        pattern: /^91[6-9][0-9]{9}$/,
+        localPattern: /^[6-9][0-9]{9}$/,
+        format: number => `+91${number.substring(number.length - 10)}`
+      },
+      
+      // USA/Canada
+      '1': {
+        pattern: /^1[2-9][0-9]{9}$/,
+        localPattern: /^[2-9][0-9]{9}$/,
+        format: number => `+1${number.substring(number.length - 10)}`
+      },
+      
+      // UK
+      '44': {
+        pattern: /^44[1-9][0-9]{8,9}$/,
+        localPattern: /^[1-9][0-9]{8,9}$/,
+        format: number => `+44${number.substring(number.length >= 10 ? number.length - 10 : number.length - 9)}`
+      },
+      
+      // Germany
+      '49': {
+        pattern: /^49[1-9][0-9]{10,11}$/,
+        localPattern: /^[1-9][0-9]{10,11}$/,
+        format: number => `+49${number.substring(number.length >= 12 ? number.length - 11 : number.length - 10)}`
+      },
+      
+      // France
+      '33': {
+        pattern: /^33[1-9][0-9]{8}$/,
+        localPattern: /^[1-9][0-9]{8}$/,
+        format: number => `+33${number.substring(number.length - 9)}`
+      },
+      
+      // Australia
+      '61': {
+        pattern: /^61[2-478][0-9]{8}$/,
+        localPattern: /^[2-478][0-9]{8}$/,
+        format: number => `+61${number.substring(number.length - 9)}`
+      },
+      
+      // Japan
+      '81': {
+        pattern: /^81[1-9][0-9]{8,9}$/,
+        localPattern: /^[1-9][0-9]{8,9}$/,
+        format: number => `+81${number.substring(number.length >= 10 ? number.length - 10 : number.length - 9)}`
+      },
+      
+      // China
+      '86': {
+        pattern: /^86[1][3-9][0-9]{9}$/,
+        localPattern: /^[1][3-9][0-9]{9}$/,
+        format: number => `+86${number.substring(number.length - 11)}`
+      },
+      
+      // South Korea
+      '82': {
+        pattern: /^82[1-9][0-9]{7,8}$/,
+        localPattern: /^[1-9][0-9]{7,8}$/,
+        format: number => `+82${number.substring(number.length >= 9 ? number.length - 9 : number.length - 8)}`
+      },
+      
+      // Brazil
+      '55': {
+        pattern: /^55[1-9][0-9]{10}$/,
+        localPattern: /^[1-9][0-9]{10}$/,
+        format: number => `+55${number.substring(number.length - 11)}`
+      },
+      
+      // Russia
+      '7': {
+        pattern: /^7[1-9][0-9]{9}$/,
+        localPattern: /^[1-9][0-9]{9}$/,
+        format: number => `+7${number.substring(number.length - 10)}`
+      },
+      
+      // Turkey
+      '90': {
+        pattern: /^90[1-9][0-9]{9}$/,
+        localPattern: /^[1-9][0-9]{9}$/,
+        format: number => `+90${number.substring(number.length - 10)}`
+      },
+      
+      // UAE
+      '971': {
+        pattern: /^971[1-9][0-9]{7,8}$/,
+        localPattern: /^[1-9][0-9]{7,8}$/,
+        format: number => `+971${number.substring(number.length >= 9 ? number.length - 9 : number.length - 8)}`
+      },
+      
+      // Saudi Arabia
+      '966': {
+        pattern: /^966[1-9][0-9]{8}$/,
+        localPattern: /^[1-9][0-9]{8}$/,
+        format: number => `+966${number.substring(number.length - 9)}`
+      }
+    };
+    
+    // If number already has + and looks international, validate it
+    if (cleaned.startsWith('+')) {
+      // Extract country code and validate
+      for (let countryCode of Object.keys(countryRules).sort((a, b) => b.length - a.length)) {
+        if (cleaned.substring(1).startsWith(countryCode)) {
+          const rule = countryRules[countryCode];
+          const fullNumber = cleaned.substring(1);
+          if (rule.pattern.test(fullNumber)) {
+            return cleaned; // Already in correct format
+          }
+        }
+      }
     }
     
-    // Validate length (should be 13 characters for +92 format or 10-15 for others)
-    if (cleaned.length < 10 || cleaned.length > 15) {
+    // Try to match against country patterns
+    for (let countryCode of Object.keys(countryRules).sort((a, b) => b.length - a.length)) {
+      const rule = countryRules[countryCode];
+      
+      // Check if it matches the international pattern
+      if (rule.pattern.test(workingNumber)) {
+        return `+${workingNumber}`;
+      }
+      
+      // Check if it matches the local pattern and add country code
+      if (rule.localPattern.test(workingNumber)) {
+        return rule.format(workingNumber);
+      }
+      
+      // Check if it starts with country code but missing +
+      if (workingNumber.startsWith(countryCode) && rule.pattern.test(workingNumber)) {
+        return `+${workingNumber}`;
+      }
+    }
+    
+    // Special handling for numbers that start with 0 (remove leading 0 and try again)
+    if (cleaned.startsWith('0') && cleaned.length > 7) {
+      const withoutZero = cleaned.substring(1);
+      return this.cleanPhoneNumber(withoutZero);
+    }
+    
+    // Validate final length and format
+    if (cleaned.length >= 7 && cleaned.length <= 15) {
+      // If it doesn't match any specific country pattern, treat as international
+      if (cleaned.startsWith('+')) {
+        return cleaned;
+      } else if (cleaned.length >= 10) {
+        // For unrecognized patterns, add + if it looks international
+        return `+${cleaned}`;
+      }
+    }
+    
+    // Final validation - must be reasonable phone number length
+    if (cleaned.length < 7 || cleaned.length > 15) {
       return null;
     }
     
-    // Ensure it's a valid Pakistani mobile number
-    if (cleaned.match(/^\+923[0-9]{9}$/)) {
-      return cleaned;
-    }
-    
-    // For other formats, basic validation
-    if (cleaned.length >= 10 && cleaned.length <= 15) {
-      return cleaned;
-    }
-    
-    return null;
+    return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
   }
   
-  saveContacts(contacts) {
-    // Check if chrome.runtime is still available
-    if (!chrome.runtime || !chrome.runtime.sendMessage) {
-      console.warn('[FB Extractor] Extension context invalidated - cannot save contacts. Please reload the page.');
-      return;
-    }
-
+  // Safe wrapper for chrome.runtime.sendMessage calls
+  // Safe wrapper for chrome.runtime.sendMessage calls
+  safeSendMessage(message, callback) {
     try {
-      chrome.runtime.sendMessage({
-        action: 'saveContacts',
-        contacts: contacts
-      }, (response) => {
-        // Check for extension context invalidation
+      // Enhanced validation
+      if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+        throw new Error('Chrome runtime not available');
+      }
+
+      // Test extension context
+      const extensionId = chrome.runtime.id;
+      if (!extensionId) {
+        throw new Error('Extension context invalidated');
+      }
+
+      // Send the message with enhanced error handling
+      chrome.runtime.sendMessage(message, (response) => {
+        // Check for runtime errors with comprehensive error detection
         if (chrome.runtime.lastError) {
-          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
-            console.warn('[FB Extractor] Extension was reloaded. Please refresh the page to continue.');
+          const errorMsg = chrome.runtime.lastError.message || chrome.runtime.lastError.toString();
+          console.warn('[FB Extractor] Runtime error in safeSendMessage:', errorMsg);
+          
+          // Check for all known connection/context errors
+          if (errorMsg.includes('Extension context invalidated') || 
+              errorMsg.includes('message port closed') ||
+              errorMsg.includes('receiving end does not exist') ||
+              errorMsg.includes('Could not establish connection') ||
+              errorMsg.includes('Extension context invalidated') ||
+              errorMsg.includes('The message port closed before') ||
+              errorMsg.includes('Extension has been reloaded')) {
+            
+            console.log('[FB Extractor] Connection error detected, switching to local storage backup');
+            this.handleExtensionInvalidation();
             this.showExtensionReloadNotification();
+            
+            // Call callback with error indication
+            if (callback) {
+              callback({ error: 'connection_failed', fallback: true });
+            }
             return;
           }
-          console.error('[FB Extractor] Error saving contacts:', chrome.runtime.lastError.message);
+          
+          // For other runtime errors, log and continue
+          console.error('[FB Extractor] Other runtime error:', errorMsg);
+          if (callback) {
+            callback({ error: errorMsg });
+          }
           return;
         }
 
-        if (response && response.success) {
-          console.log(`[FB Extractor] Saved ${response.newCount} new contacts. Total: ${response.totalCount}`);
-        } else {
-          console.warn('[FB Extractor] Failed to save contacts - no response from background script');
+        // Success - call the original callback
+        if (callback) {
+          callback(response);
         }
       });
+
     } catch (error) {
-      console.error('[FB Extractor] Error in saveContacts:', error.message);
-      if (error.message.includes('Extension context invalidated')) {
+      console.warn('[FB Extractor] safeSendMessage failed:', error.message);
+      
+      // Handle all known extension context errors
+      if (error.message.includes('Extension context invalidated') ||
+          error.message.includes('Chrome runtime not available') ||
+          error.message.includes('message port closed') ||
+          error.message.includes('receiving end does not exist') ||
+          error.message.includes('Could not establish connection')) {
+        
+        console.log('[FB Extractor] Extension context error, activating fallback mode');
+        this.handleExtensionInvalidation();
         this.showExtensionReloadNotification();
       }
+      
+      // Call callback with error indication
+      if (callback) {
+        callback({ error: error.message, fallback: true });
+      }
+    }
+  }
+
+  // Wrapper method for safe contact saving with enhanced error handling
+  safeSaveContacts(contacts) {
+    try {
+      this.saveContacts(contacts);
+    } catch (error) {
+      console.warn('[FB Extractor] safeSaveContacts caught error:', error.message);
+      
+      // Handle extension context invalidation
+      if (error.message.includes('Extension context invalidated') ||
+          error.message.includes('message port closed') ||
+          error.message.includes('receiving end does not exist') ||
+          error.message.includes('Could not establish connection') ||
+          error.message.includes('chrome.runtime.sendMessage')) {
+        
+        console.log('[FB Extractor] Saving contacts to local storage due to extension context error');
+        this.saveContactsToLocalStorage(contacts);
+        this.handleExtensionInvalidation();
+        this.showExtensionReloadNotification();
+      } else {
+        // For other errors, try local storage as fallback
+        console.log('[FB Extractor] Unexpected error, falling back to local storage');
+        this.saveContactsToLocalStorage(contacts);
+      }
+    }
+  }
+
+  saveContacts(contacts) {
+    // Enhanced check for chrome.runtime availability
+    if (!chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+      console.warn('[FB Extractor] Extension context invalidated - saving to local storage as backup');
+      this.saveContactsToLocalStorage(contacts);
+      this.showExtensionReloadNotification();
+      return;
+    }
+
+    // Use safe message sending with enhanced error handling
+    this.safeSendMessage({
+      action: 'saveContacts',
+      contacts: contacts
+    }, (response) => {
+      // Handle different response types
+      if (response && response.error) {
+        console.warn('[FB Extractor] Error response from safeSendMessage:', response.error);
+        
+        // If it's a connection error, use local storage
+        if (response.fallback || 
+            response.error === 'connection_failed' ||
+            response.error.includes('receiving end does not exist') ||
+            response.error.includes('Could not establish connection')) {
+          
+          console.log('[FB Extractor] Using local storage fallback due to connection error');
+          this.saveContactsToLocalStorage(contacts);
+          return;
+        }
+        
+        // For other errors, also fallback to local storage
+        console.log('[FB Extractor] Using local storage fallback due to other error');
+        this.saveContactsToLocalStorage(contacts);
+        return;
+      }
+
+      // Success response
+      if (response && response.success) {
+        console.log(`[FB Extractor] ✅ Saved ${response.newCount} new contacts. Total: ${response.totalCount}`);
+        
+        // Update UI to show successful sync
+        if (document.getElementById('extractor-count')) {
+          const countElement = document.getElementById('extractor-count');
+          countElement.style.color = 'green';
+          countElement.title = 'Contacts synced successfully with extension storage';
+        }
+      } else {
+        console.warn('[FB Extractor] No valid response from background script, using local storage fallback');
+        this.saveContactsToLocalStorage(contacts);
+      }
+    });
+  }
+
+  saveContactsToLocalStorage(contacts) {
+    try {
+      // Get existing backup contacts
+      const existingBackup = localStorage.getItem('fb-extractor-backup-contacts');
+      let allBackupContacts = existingBackup ? JSON.parse(existingBackup) : [];
+      
+      // Add new contacts to backup
+      const existingNumbers = new Set(allBackupContacts.map(c => c.number));
+      const newBackupContacts = contacts.filter(contact => !existingNumbers.has(contact.number));
+      
+      allBackupContacts.push(...newBackupContacts);
+      
+      // Save to localStorage
+      localStorage.setItem('fb-extractor-backup-contacts', JSON.stringify(allBackupContacts));
+      localStorage.setItem('fb-extractor-backup-timestamp', new Date().toISOString());
+      
+      console.log(`[FB Extractor] Saved ${newBackupContacts.length} contacts to local storage backup. Total backup: ${allBackupContacts.length}`);
+      
+      // Update UI to show backup status
+      if (document.getElementById('extractor-count')) {
+        const countElement = document.getElementById('extractor-count');
+        countElement.textContent = `${this.extractedNumbers.size} (${allBackupContacts.length} backed up)`;
+        countElement.style.color = 'orange';
+        countElement.title = 'Contacts backed up locally - refresh page to sync with extension';
+      }
+      
+    } catch (error) {
+      console.error('[FB Extractor] Error saving to local storage:', error);
+    }
+  }
+
+  handleExtensionInvalidation() {
+    // Stop all active operations when extension context is invalidated
+    console.log('[FB Extractor] Handling extension invalidation...');
+    
+    // Stop extraction
+    this.isActive = false;
+    this.isScrolling = false;
+    
+    // Set fallback mode flag
+    this.fallbackMode = true;
+    
+    // Clear all intervals
+    if (this.scrollInterval) {
+      clearInterval(this.scrollInterval);
+      this.scrollInterval = null;
+    }
+    if (this.extractInterval) {
+      clearInterval(this.extractInterval);
+      this.extractInterval = null;
+    }
+    if (this.navigationInterval) {
+      clearInterval(this.navigationInterval);
+      this.navigationInterval = null;
+    }
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+      this.scrollTimeout = null;
+    }
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+    
+    // Start periodic reconnection attempts
+    this.startReconnectionAttempts();
+    
+    // Update UI to show invalidated state
+    if (document.getElementById('extractor-status')) {
+      this.updateStatus('Extension Reloaded - Fallback Mode', 'orange');
+    }
+    if (document.getElementById('extractor-toggle')) {
+      document.getElementById('extractor-toggle').textContent = 'Reload Page';
+      document.getElementById('extractor-toggle').onclick = () => location.reload();
+    }
+    if (document.getElementById('extractor-scroll')) {
+      document.getElementById('extractor-scroll').textContent = 'Stopped';
+    }
+    
+    console.log('[FB Extractor] All operations stopped due to extension invalidation');
+  }
+
+  startReconnectionAttempts() {
+    // Try to reconnect every 5 seconds for up to 2 minutes
+    let attempts = 0;
+    const maxAttempts = 24; // 2 minutes
+    
+    this.reconnectionInterval = setInterval(() => {
+      attempts++;
+      
+      try {
+        // Test if extension context is restored
+        if (chrome && chrome.runtime && chrome.runtime.id) {
+          console.log('[FB Extractor] ✅ Extension context restored! Clearing fallback mode.');
+          
+          // Extension is back online
+          this.fallbackMode = false;
+          clearInterval(this.reconnectionInterval);
+          
+          // Try to sync any backup contacts
+          this.syncBackupContacts();
+          
+          // Update UI
+          this.updateStatus('Reconnected - Ready', 'green');
+          if (document.getElementById('extractor-toggle')) {
+            document.getElementById('extractor-toggle').textContent = 'Start';
+            document.getElementById('extractor-toggle').onclick = () => this.toggle();
+          }
+          
+          return;
+        }
+      } catch (error) {
+        // Still not available
+      }
+      
+      if (attempts >= maxAttempts) {
+        console.log('[FB Extractor] Reconnection attempts timed out. Manual page refresh needed.');
+        clearInterval(this.reconnectionInterval);
+      }
+      
+    }, 5000); // Check every 5 seconds
+  }
+
+  syncBackupContacts() {
+    try {
+      const backupContacts = localStorage.getItem('fb-extractor-backup-contacts');
+      if (backupContacts) {
+        const contacts = JSON.parse(backupContacts);
+        console.log(`[FB Extractor] Syncing ${contacts.length} backup contacts...`);
+        
+        this.safeSaveContacts(contacts);
+        
+        // Clear backup after successful sync
+        localStorage.removeItem('fb-extractor-backup-contacts');
+        localStorage.removeItem('fb-extractor-backup-timestamp');
+        
+        console.log('[FB Extractor] ✅ Backup contacts synced successfully');
+      }
+    } catch (error) {
+      console.warn('[FB Extractor] Error syncing backup contacts:', error);
     }
   }
 
@@ -1359,9 +1982,11 @@ class FacebookContactExtractor {
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     `;
     notification.innerHTML = `
-      🔄 Facebook Contact Extractor was reloaded. Please refresh this page to continue extraction.
-      <button onclick="location.reload()" style="margin-left: 10px; padding: 5px 10px; background: white; color: #ff6b6b; border: none; border-radius: 3px; cursor: pointer;">Refresh Now</button>
-      <button onclick="this.parentElement.remove()" style="margin-left: 5px; padding: 5px 10px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 3px; cursor: pointer;">×</button>
+      🔄 Extension connection lost - using fallback mode. Data is safely stored locally.
+      <br><small>📊 ${this.extractedNumbers.size} contacts secured • Attempting automatic reconnection...</small>
+      <br>
+      <button onclick="location.reload()" style="margin-left: 10px; padding: 8px 15px; background: white; color: #ff6b6b; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Refresh for Full Sync</button>
+      <button onclick="this.parentElement.remove()" style="margin-left: 5px; padding: 8px 12px; background: rgba(255,255,255,0.2); color: white; border: none; border-radius: 4px; cursor: pointer;">Dismiss</button>
     `;
 
     // Remove existing notification if present
@@ -1383,19 +2008,9 @@ class FacebookContactExtractor {
   updateContactCount() {
     document.getElementById('extractor-count').textContent = this.extractedNumbers.size;
     
-    // Update stealth stats
+    // Update interaction stats
     const interactions = this.humanBehavior.mouseMovements + this.humanBehavior.clickEvents;
     document.getElementById('extractor-interactions').textContent = interactions;
-    
-    // Update stealth status
-    const stealthElement = document.getElementById('extractor-stealth');
-    if (this.shouldPauseForSuspicion()) {
-      stealthElement.textContent = 'Needs Break';
-      stealthElement.style.color = 'orange';
-    } else {
-      stealthElement.textContent = 'Active';
-      stealthElement.style.color = 'green';
-    }
   }
   
   updateStatus(status, color = 'black') {
