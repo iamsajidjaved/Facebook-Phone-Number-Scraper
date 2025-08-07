@@ -94,13 +94,70 @@ class FacebookContactExtractor {
       /\b\+?90[-.\s]?[1-9][0-9]{9}\b/g,                    // +90-532-123-4567
       /\b0[1-9][0-9]{9}\b/g,                               // 0532-123-4567
       
-      // UAE
-      /\b\+?971[-.\s]?[1-9][0-9]{7,8}\b/g,                 // +971-50-123-4567
-      /\b0[1-9][0-9]{7,8}\b/g,                             // 050-123-4567
+      // ==================== ENHANCED UAE PATTERNS ====================
+      // UAE - All possible formats for mobile networks (50, 55, 56, 58)
       
-      // Saudi Arabia
-      /\b\+?966[-.\s]?[1-9][0-9]{8}\b/g,                   // +966-50-123-4567
-      /\b0[1-9][0-9]{8}\b/g,                               // 050-123-4567
+      // International formats with +971
+      /\b\+971[-.\s]?[5][0568][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,    // +971-50-123-4567
+      /\b\+971[-.\s]?\(?[5][0568]\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g, // +971(50)123-4567
+      /\b\+971[5][0568][0-9]{7}\b/g,                                  // +971501234567
+      /\(\+971\)[-.\s]?[5][0568][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,  // (+971)50-123-4567
+      /\(\+971\)[-.\s]?[5][0568][0-9]{7}\b/g,                        // (+971)501234567
+      
+      // Without + but with 971 prefix
+      /\b971[-.\s]?[5][0568][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,      // 971-50-123-4567
+      /\b971[5][0568][0-9]{7}\b/g,                                    // 971501234567
+      /\b0*971[-.\s]?[5][0568][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,    // 00971-50-123-4567
+      
+      // Local UAE formats (starting with 0)
+      /\b0[5][0568][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,               // 050-123-4567
+      /\b0[5][0568][0-9]{7}\b/g,                                      // 0501234567
+      
+      // UAE with various spacing patterns
+      /\b\+971[-.\s][5][0568][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,       // +971 50 123 4567
+      /\b\+971[-.\s][5][0568][-.\s][0-9]{7}\b/g,                     // +971 50 1234567
+      /\b971[-.\s][5][0568][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,         // 971 50 123 4567
+      
+      // ==================== ENHANCED MALAYSIAN PATTERNS ====================
+      // Malaysia - Mobile networks (01X series: 010-019)
+      
+      // International formats with +60
+      /\b\+60[-.\s]?1[0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,        // +60-12-345-6789
+      /\b\+60[-.\s]?1[0-9][-.\s]?[0-9]{7}\b/g,                       // +60-12-3456789
+      /\b\+601[0-9][0-9]{7}\b/g,                                      // +60123456789
+      /\b\+60[-.\s]1[0-9][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,          // +60 12 345 6789
+      
+      // Without + but with 60 prefix
+      /\b0*60[-.\s]?1[0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,        // 0060-12-345-6789
+      /\b601[0-9][0-9]{7}\b/g,                                        // 60123456789
+      
+      // Local Malaysian formats (starting with 01)
+      /\b01[0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,                  // 012-345-6789
+      /\b01[0-9][-.\s]?[0-9]{7}\b/g,                                  // 012-3456789
+      /\b01[0-9][0-9]{7}\b/g,                                         // 0123456789
+      /\b01[0-9][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,                    // 012 345 6789
+      
+      // Malaysian with various spacing
+      /\b\+6012[-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,                     // +6012 345 6789
+      /\b\+6012[-.\s][0-9]{7}\b/g,                                    // +6012-3456789
+      
+      // ==================== ENHANCED SAUDI PATTERNS ====================
+      // Saudi Arabia - Mobile networks (05X series: 050-059)
+      
+      // International formats with +966
+      /\b\+966[-.\s]?[5][0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,     // +966-50-123-4567
+      /\b\+966[-.\s]?[5][0-9][0-9]{7}\b/g,                           // +966-501234567
+      /\b\+966[5][0-9][0-9]{7}\b/g,                                   // +966501234567
+      /\b\+966[-.\s][5][0-9][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,       // +966 50 123 4567
+      
+      // Without + but with 966 prefix
+      /\b0*966[-.\s]?[5][0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,     // 00966-50-123-4567
+      /\b966[5][0-9][0-9]{7}\b/g,                                     // 966501234567
+      
+      // Local Saudi formats (starting with 05)
+      /\b0[5][0-9][-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,                // 050-123-4567
+      /\b0[5][0-9][0-9]{7}\b/g,                                       // 0501234567
+      /\b0[5][0-9][-.\s][0-9]{3}[-.\s][0-9]{4}\b/g,                  // 050 123 4567
       
       // Generic patterns for other countries
       /\b\+[1-9]\d{6,14}\b/g,                              // Any international format +country-code
@@ -110,8 +167,9 @@ class FacebookContactExtractor {
       /\b[0-9]{4}[-.\s][0-9]{3}[-.\s][0-9]{3,4}\b/g,       // 1234-567-890
       /\b\([0-9]{3}\)[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b/g,   // (123) 456-7890
       
-      // Parentheses formats
-      /\((\+?[0-9]{7,15})\)/g,                             // (+1234567890)
+      // Parentheses formats for international numbers
+      /\(\+?[0-9]{7,15}\)/g,                               // (+1234567890)
+      /\(\+?[0-9]{2,4}\)[-.\s]?[0-9]{7,12}/g,              // (+971)501234567
       
       // Multi-line contact detection
       /(?:📞|contact|call)[^\n]*\n.*?(\+?[0-9]{7,15})/gi,
@@ -122,7 +180,7 @@ class FacebookContactExtractor {
       /(?:M|P|T)[:\s]*(\+?[0-9]{7,15})/gi,                 // M: mobile, P: phone, T: telephone
       
       // Fallback patterns for any reasonable phone number
-      /\b[0-9]{7,15}\b/g                                    // 7-15 digit numbers as last resort
+      /\b[0-9]{8,15}\b/g                                    // 8-15 digit numbers as fallback (increased from 7)
     ];
     
     this.init();
@@ -1632,7 +1690,7 @@ class FacebookContactExtractor {
     
     // International format checks
     if (number.length >= 10) {
-      // Common country code patterns
+      // Common country code patterns (enhanced with UAE, Malaysia, Saudi)
       const commonCountryCodes = [
         '1', '7', '20', '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49',
         '51', '52', '53', '54', '55', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86',
@@ -1661,8 +1719,9 @@ class FacebookContactExtractor {
       }
     }
     
-    // Local format checks
+    // Enhanced local format checks for specific countries
     if (number.length >= 8 && number.length <= 12) {
+      
       // Pakistani mobile pattern (starts with 3, 4, or 5 after any leading zeros)
       const cleanNum = number.replace(/^0+/, '');
       if (cleanNum.length >= 9 && cleanNum.length <= 10) {
@@ -1672,9 +1731,61 @@ class FacebookContactExtractor {
         }
       }
       
+      // UAE mobile patterns (050, 055, 056, 058 after removing leading zeros)
+      if (number.startsWith('0') && number.length === 10) {
+        const prefix = number.substring(0, 3);
+        if (prefix === '050' || prefix === '055' || prefix === '056' || prefix === '058') {
+          return true; // Valid UAE mobile pattern
+        }
+      }
+      
+      // Malaysian mobile patterns (01X where X is 0-9)
+      if (number.startsWith('01') && number.length === 10) {
+        const thirdDigit = parseInt(number[2]);
+        if (thirdDigit >= 0 && thirdDigit <= 9) {
+          return true; // Valid Malaysian mobile pattern
+        }
+      }
+      
+      // Saudi mobile patterns (05X where X is 0-9)
+      if (number.startsWith('05') && number.length === 10) {
+        const thirdDigit = parseInt(number[2]);
+        if (thirdDigit >= 0 && thirdDigit <= 9) {
+          return true; // Valid Saudi mobile pattern
+        }
+      }
+      
       // Other common mobile/landline patterns
       if (number.length >= 9) {
         return true; // Likely valid for most countries
+      }
+    }
+    
+    // Additional checks for international formats without country code detection
+    if (number.length >= 10 && number.length <= 15) {
+      
+      // UAE international format check (971 prefix)
+      if (number.startsWith('971') && number.length >= 12 && number.length <= 13) {
+        const mobilePrefix = number.substring(3, 5);
+        if (mobilePrefix === '50' || mobilePrefix === '55' || mobilePrefix === '56' || mobilePrefix === '58') {
+          return true; // Valid UAE international format
+        }
+      }
+      
+      // Malaysia international format check (60 prefix)
+      if (number.startsWith('60') && number.length >= 11 && number.length <= 12) {
+        const mobilePrefix = number.substring(2, 4);
+        if (mobilePrefix.startsWith('1') && parseInt(mobilePrefix[1]) >= 0 && parseInt(mobilePrefix[1]) <= 9) {
+          return true; // Valid Malaysian international format
+        }
+      }
+      
+      // Saudi international format check (966 prefix)
+      if (number.startsWith('966') && number.length >= 12 && number.length <= 13) {
+        const mobilePrefix = number.substring(3, 5);
+        if (mobilePrefix.startsWith('5') && parseInt(mobilePrefix[1]) >= 0 && parseInt(mobilePrefix[1]) <= 9) {
+          return true; // Valid Saudi international format
+        }
       }
     }
     
