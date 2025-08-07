@@ -1490,177 +1490,195 @@ class FacebookContactExtractor {
   }
   
   cleanPhoneNumber(number) {
-    // Clean and standardize international phone number
+    // Extract phone number as-is without format changes
+    // Only remove non-digit characters except + and preserve original format
     let cleaned = number.replace(/[^\d+]/g, '');
     
-    // Remove any leading zeros or plus signs for processing
-    let workingNumber = cleaned.replace(/^[0+]+/, '');
+    // Enhanced validation to filter out non-phone numbers
     
-    // Country code mapping and normalization
-    const countryRules = {
-      // Pakistan
-      '92': {
-        pattern: /^92[3-9][0-9]{8}$/,
-        localPattern: /^[3-9][0-9]{8}$/,
-        format: number => `+92${number.substring(number.length - 9)}`
-      },
-      
-      // India
-      '91': {
-        pattern: /^91[6-9][0-9]{9}$/,
-        localPattern: /^[6-9][0-9]{9}$/,
-        format: number => `+91${number.substring(number.length - 10)}`
-      },
-      
-      // USA/Canada
-      '1': {
-        pattern: /^1[2-9][0-9]{9}$/,
-        localPattern: /^[2-9][0-9]{9}$/,
-        format: number => `+1${number.substring(number.length - 10)}`
-      },
-      
-      // UK
-      '44': {
-        pattern: /^44[1-9][0-9]{8,9}$/,
-        localPattern: /^[1-9][0-9]{8,9}$/,
-        format: number => `+44${number.substring(number.length >= 10 ? number.length - 10 : number.length - 9)}`
-      },
-      
-      // Germany
-      '49': {
-        pattern: /^49[1-9][0-9]{10,11}$/,
-        localPattern: /^[1-9][0-9]{10,11}$/,
-        format: number => `+49${number.substring(number.length >= 12 ? number.length - 11 : number.length - 10)}`
-      },
-      
-      // France
-      '33': {
-        pattern: /^33[1-9][0-9]{8}$/,
-        localPattern: /^[1-9][0-9]{8}$/,
-        format: number => `+33${number.substring(number.length - 9)}`
-      },
-      
-      // Australia
-      '61': {
-        pattern: /^61[2-478][0-9]{8}$/,
-        localPattern: /^[2-478][0-9]{8}$/,
-        format: number => `+61${number.substring(number.length - 9)}`
-      },
-      
-      // Japan
-      '81': {
-        pattern: /^81[1-9][0-9]{8,9}$/,
-        localPattern: /^[1-9][0-9]{8,9}$/,
-        format: number => `+81${number.substring(number.length >= 10 ? number.length - 10 : number.length - 9)}`
-      },
-      
-      // China
-      '86': {
-        pattern: /^86[1][3-9][0-9]{9}$/,
-        localPattern: /^[1][3-9][0-9]{9}$/,
-        format: number => `+86${number.substring(number.length - 11)}`
-      },
-      
-      // South Korea
-      '82': {
-        pattern: /^82[1-9][0-9]{7,8}$/,
-        localPattern: /^[1-9][0-9]{7,8}$/,
-        format: number => `+82${number.substring(number.length >= 9 ? number.length - 9 : number.length - 8)}`
-      },
-      
-      // Brazil
-      '55': {
-        pattern: /^55[1-9][0-9]{10}$/,
-        localPattern: /^[1-9][0-9]{10}$/,
-        format: number => `+55${number.substring(number.length - 11)}`
-      },
-      
-      // Russia
-      '7': {
-        pattern: /^7[1-9][0-9]{9}$/,
-        localPattern: /^[1-9][0-9]{9}$/,
-        format: number => `+7${number.substring(number.length - 10)}`
-      },
-      
-      // Turkey
-      '90': {
-        pattern: /^90[1-9][0-9]{9}$/,
-        localPattern: /^[1-9][0-9]{9}$/,
-        format: number => `+90${number.substring(number.length - 10)}`
-      },
-      
-      // UAE
-      '971': {
-        pattern: /^971[1-9][0-9]{7,8}$/,
-        localPattern: /^[1-9][0-9]{7,8}$/,
-        format: number => `+971${number.substring(number.length >= 9 ? number.length - 9 : number.length - 8)}`
-      },
-      
-      // Saudi Arabia
-      '966': {
-        pattern: /^966[1-9][0-9]{8}$/,
-        localPattern: /^[1-9][0-9]{8}$/,
-        format: number => `+966${number.substring(number.length - 9)}`
-      }
-    };
+    // Must be reasonable phone number length (minimum 8 digits for international)
+    if (cleaned.length < 8 || cleaned.length > 15) {
+      return null;
+    }
     
-    // If number already has + and looks international, validate it
+    // Remove leading zeros for analysis (but preserve in final result)
+    const digitsOnly = cleaned.replace(/^\+/, '').replace(/^0+/, '');
+    
+    // Reject obvious non-phone number patterns
+    
+    // 1. Reject numbers that are too short even without leading zeros
+    if (digitsOnly.length < 7) {
+      return null;
+    }
+    
+    // 2. Reject numbers with repeating patterns (like 1111111, 123123123)
+    if (this.isRepeatingPattern(digitsOnly)) {
+      return null;
+    }
+    
+    // 3. Reject sequential numbers (like 1234567, 9876543)
+    if (this.isSequentialPattern(digitsOnly)) {
+      return null;
+    }
+    
+    // 4. Reject numbers that look like prices or quantities (all same digit, too uniform)
+    if (this.looksLikePrice(digitsOnly)) {
+      return null;
+    }
+    
+    // 5. Reject numbers that don't follow basic international phone number structure
+    if (!this.hasValidPhoneStructure(digitsOnly)) {
+      return null;
+    }
+    
+    // If it already starts with +, keep it as-is
     if (cleaned.startsWith('+')) {
-      // Extract country code and validate
-      for (let countryCode of Object.keys(countryRules).sort((a, b) => b.length - a.length)) {
-        if (cleaned.substring(1).startsWith(countryCode)) {
-          const rule = countryRules[countryCode];
-          const fullNumber = cleaned.substring(1);
-          if (rule.pattern.test(fullNumber)) {
-            return cleaned; // Already in correct format
+      return cleaned;
+    }
+    
+    // For numbers without +, keep them exactly as found
+    // Don't add country codes or modify format
+    return cleaned;
+  }
+  
+  isRepeatingPattern(number) {
+    // Check for repeating patterns like 1111111, 123123123
+    if (number.length < 6) return false;
+    
+    // Check for all same digits
+    if (new Set(number).size === 1) {
+      return true;
+    }
+    
+    // Check for repeating short sequences
+    for (let patternLength = 2; patternLength <= 4; patternLength++) {
+      const pattern = number.substring(0, patternLength);
+      let isRepeating = true;
+      
+      for (let i = 0; i < number.length; i += patternLength) {
+        const segment = number.substring(i, i + patternLength);
+        if (segment !== pattern && segment !== pattern.substring(0, segment.length)) {
+          isRepeating = false;
+          break;
+        }
+      }
+      
+      if (isRepeating && number.length >= patternLength * 3) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  isSequentialPattern(number) {
+    // Check for sequential patterns like 1234567, 9876543
+    if (number.length < 6) return false;
+    
+    let ascending = 0;
+    let descending = 0;
+    
+    for (let i = 1; i < number.length; i++) {
+      const curr = parseInt(number[i]);
+      const prev = parseInt(number[i-1]);
+      
+      if (curr === prev + 1) ascending++;
+      if (curr === prev - 1) descending++;
+    }
+    
+    // If more than 60% of digits are in sequence, likely not a phone number
+    const threshold = Math.floor(number.length * 0.6);
+    return ascending >= threshold || descending >= threshold;
+  }
+  
+  looksLikePrice(number) {
+    // Check if number looks like a price or quantity
+    
+    // Very short numbers (like 5988914 -> 7 digits) that don't match phone patterns
+    if (number.length === 7 && !number.startsWith('0') && !number.startsWith('1')) {
+      // Check if it could be a Pakistani local number (should start with 3, 4, or 5 for mobile)
+      const firstDigit = parseInt(number[0]);
+      if (firstDigit < 3 || firstDigit > 5) {
+        return true; // Likely not a Pakistani mobile number
+      }
+    }
+    
+    // Numbers starting with very low digits (like 0909858) that are too short
+    if (number.length < 10 && number.startsWith('0') && number.length < 11) {
+      // Could be local format, but verify it's not just a random number
+      const withoutZero = number.substring(1);
+      if (withoutZero.length < 8) {
+        return true; // Too short to be a complete phone number
+      }
+    }
+    
+    // Check for uniform digit distribution (common in non-phone numbers)
+    const digitCounts = {};
+    for (let digit of number) {
+      digitCounts[digit] = (digitCounts[digit] || 0) + 1;
+    }
+    
+    // If one digit appears more than 60% of the time, suspicious
+    const maxCount = Math.max(...Object.values(digitCounts));
+    if (maxCount / number.length > 0.6) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  hasValidPhoneStructure(number) {
+    // Check if number follows basic phone number structure
+    
+    // International format checks
+    if (number.length >= 10) {
+      // Common country code patterns
+      const commonCountryCodes = [
+        '1', '7', '20', '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49',
+        '51', '52', '53', '54', '55', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86',
+        '90', '91', '92', '93', '94', '95', '98', '212', '213', '216', '218', '220', '221', '222', '223', '224', '225',
+        '226', '227', '228', '229', '230', '231', '232', '233', '234', '235', '236', '237', '238', '239', '240', '241',
+        '242', '243', '244', '245', '246', '248', '249', '250', '251', '252', '253', '254', '255', '256', '257', '258',
+        '260', '261', '262', '263', '264', '265', '266', '267', '268', '269', '290', '291', '297', '298', '299', '350',
+        '351', '352', '353', '354', '355', '356', '357', '358', '359', '370', '371', '372', '373', '374', '375', '376',
+        '377', '378', '380', '381', '382', '383', '385', '386', '387', '389', '420', '421', '423', '500', '501', '502',
+        '503', '504', '505', '506', '507', '508', '509', '590', '591', '592', '593', '594', '595', '596', '597', '598',
+        '599', '670', '672', '673', '674', '675', '676', '677', '678', '679', '680', '681', '682', '683', '684', '685',
+        '686', '687', '688', '689', '690', '691', '692', '850', '852', '853', '855', '856', '880', '886', '960', '961',
+        '962', '963', '964', '965', '966', '967', '968', '970', '971', '972', '973', '974', '975', '976', '977', '992',
+        '993', '994', '995', '996', '998'
+      ];
+      
+      // Check if starts with a valid country code
+      for (let code of commonCountryCodes) {
+        if (number.startsWith(code)) {
+          const remaining = number.substring(code.length);
+          // After country code, should have at least 6 more digits
+          if (remaining.length >= 6 && remaining.length <= 12) {
+            return true;
           }
         }
       }
     }
     
-    // Try to match against country patterns
-    for (let countryCode of Object.keys(countryRules).sort((a, b) => b.length - a.length)) {
-      const rule = countryRules[countryCode];
-      
-      // Check if it matches the international pattern
-      if (rule.pattern.test(workingNumber)) {
-        return `+${workingNumber}`;
+    // Local format checks
+    if (number.length >= 8 && number.length <= 12) {
+      // Pakistani mobile pattern (starts with 3, 4, or 5 after any leading zeros)
+      const cleanNum = number.replace(/^0+/, '');
+      if (cleanNum.length >= 9 && cleanNum.length <= 10) {
+        const firstDigit = parseInt(cleanNum[0]);
+        if (firstDigit >= 3 && firstDigit <= 5) {
+          return true; // Valid Pakistani mobile pattern
+        }
       }
       
-      // Check if it matches the local pattern and add country code
-      if (rule.localPattern.test(workingNumber)) {
-        return rule.format(workingNumber);
-      }
-      
-      // Check if it starts with country code but missing +
-      if (workingNumber.startsWith(countryCode) && rule.pattern.test(workingNumber)) {
-        return `+${workingNumber}`;
+      // Other common mobile/landline patterns
+      if (number.length >= 9) {
+        return true; // Likely valid for most countries
       }
     }
     
-    // Special handling for numbers that start with 0 (remove leading 0 and try again)
-    if (cleaned.startsWith('0') && cleaned.length > 7) {
-      const withoutZero = cleaned.substring(1);
-      return this.cleanPhoneNumber(withoutZero);
-    }
-    
-    // Validate final length and format
-    if (cleaned.length >= 7 && cleaned.length <= 15) {
-      // If it doesn't match any specific country pattern, treat as international
-      if (cleaned.startsWith('+')) {
-        return cleaned;
-      } else if (cleaned.length >= 10) {
-        // For unrecognized patterns, add + if it looks international
-        return `+${cleaned}`;
-      }
-    }
-    
-    // Final validation - must be reasonable phone number length
-    if (cleaned.length < 7 || cleaned.length > 15) {
-      return null;
-    }
-    
-    return cleaned.startsWith('+') ? cleaned : `+${cleaned}`;
+    return false;
   }
   
   // Safe wrapper for chrome.runtime.sendMessage calls
